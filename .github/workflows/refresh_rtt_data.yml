@@ -1,0 +1,39 @@
+# .github/workflows/update_rtt_data.yml
+name: Update RTT Data
+
+on:
+  schedule:
+    - cron: '0 8 1 * *'  # 8am on 1st of every month
+  workflow_dispatch:       # also manually triggerable from GitHub UI
+    inputs:
+      month:
+        description: 'Month (e.g. Jan, Feb)'
+        required: true
+      year:
+        description: 'Year (e.g. 2026)'
+        required: true
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - run: pip install httpx polars beautifulsoup4
+
+      - run: python scripts/fetch_rtt_data.py
+        env:
+          MONTH: ${{ github.event.inputs.month }}
+          YEAR: ${{ github.event.inputs.year }}
+
+      - name: Commit new data
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git add data/
+          git diff --staged --quiet || git commit -m "Add RTT data $MONTH $YEAR"
+          git push
