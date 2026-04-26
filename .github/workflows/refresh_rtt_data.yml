@@ -8,32 +8,30 @@ on:
     inputs:
       month:
         description: 'Month (e.g. Jan, Feb)'
-        required: true
       year:
         description: 'Year (e.g. 2026)'
         required: true
 
 jobs:
   update-data:
+    environment:
+      name: demo-secrets
     runs-on: ubuntu-latest
+    env:
+      MONTH: ${{ github.event.inputs.month }}
+      YEAR: ${{ github.event.inputs.year }}
+      ***REMOVED***: ${{ secrets.***REMOVED*** }}
+      ***REMOVED***: ${{ secrets.***REMOVED*** }}
+      ***REMOVED***: ${{ secrets.***REMOVED*** }}
+      ***REMOVED***: ${{ secrets.***REMOVED*** }}
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
 
-      - run: pip install httpx polars beautifulsoup4
+      - run: pip install httpx polars beautifulsoup4 databricks-sdk
 
-      - run: python scripts/fetch_rtt_data.py
-        env:
-          MONTH: ${{ github.event.inputs.month }}
-          YEAR: ${{ github.event.inputs.year }}
-
-      - name: Commit new data
-        run: |
-          git config user.email "action@github.com"
-          git config user.name "GitHub Action"
-          git add data/
-          git diff --staged --quiet || git commit -m "Add RTT data $MONTH $YEAR"
-          git push
+      - run: python -m scripts.etl
