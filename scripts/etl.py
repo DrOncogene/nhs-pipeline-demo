@@ -73,16 +73,17 @@ def transform(local_path: Path) -> pl.DataFrame:
         ("gt_52w",    [c for c in week_cols if int(c.split()[1]) >= 52]),
     ]
 
-    df_analysis = (
+    df_clean = (
         df
         .filter(
             (pl.col("Treatment Function Code") != "C_999") &
-            (pl.col("RTT Part Type") == "Part_2")          # incomplete pathways only
+            (pl.col("RTT Part Type") == "Part_2")  # incomplete pathways only
         )
         .with_columns([
             pl.sum_horizontal(cols).alias(name)
             for name, cols in BUCKETS
         ])
+        .with_columns([pl.col("Period").str.replace("RTT-", "").str.replace("-", " ").alias("Period")])
         .with_columns([
             (pl.col("0_to_4w") + pl.col("4_to_8w") + 
             pl.col("8_to_12w") + pl.col("12_to_18w"))
@@ -115,7 +116,7 @@ def transform(local_path: Path) -> pl.DataFrame:
             "18_to_26w", "26_to_52w", "gt_52w",
         ])
     )
-    return df_analysis
+    return df_clean
 
 
 def load(df: pl.DataFrame, month: str, year: int):
