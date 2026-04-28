@@ -11,18 +11,18 @@ import httpx
 import polars as pl
 from bs4 import BeautifulSoup
 
-from scripts import TEMP_DIR, MONTHS
+from scripts import TEMP_DIR
 from scripts.utils import get_month_year_target, parse_month, parse_year, month_label_sorter
 
-***REMOVED*** = os.getenv("***REMOVED***")
-***REMOVED*** = os.getenv("***REMOVED***")
-***REMOVED*** = os.getenv("***REMOVED***")
-***REMOVED*** = os.getenv("***REMOVED***")
+DATABRICKS_HOST = os.getenv("DATABRICKS_HOST")
+DATABRICKS_CLIENT_ID = os.getenv("DATABRICKS_CLIENT_ID")
+DATABRICKS_API_KEY = os.getenv("DATABRICKS_API_KEY")
+DATABRICKS_DATA_DIR = os.getenv("DATABRICKS_DATA_DIR")
 LOCAL_DATA_DIR = Path("data")
 
-if not all([***REMOVED***, ***REMOVED***, ***REMOVED***, ***REMOVED***]):
-    raise ValueError("Missing Databricks credentials. Please set ***REMOVED***," \
-    "***REMOVED***, and ***REMOVED*** environment variables.")
+if not all([DATABRICKS_HOST, DATABRICKS_CLIENT_ID, DATABRICKS_API_KEY, DATABRICKS_DATA_DIR]):
+    raise ValueError("Missing Databricks credentials. Please set DATABRICKS_HOST," \
+    "DATABRICKS_CLIENT_ID, and DATABRICKS_API_KEY environment variables.")
 
 BASE_URL = "https://www.england.nhs.uk/statistics/statistical-work-areas/rtt-waiting-times/rtt-data-20{}-{}/"
 
@@ -126,16 +126,16 @@ def load(df: pl.DataFrame, month: str, year: int):
     target = get_month_year_target(month, year)
 
     try:
-        w = WorkspaceClient(host=***REMOVED***, client_id=***REMOVED***, client_secret=***REMOVED***)
+        w = WorkspaceClient(host=DATABRICKS_HOST, client_id=DATABRICKS_CLIENT_ID, client_secret=DATABRICKS_API_KEY)
 
         prev_year, curr_year = (year - 1) + 2000, year
         year_dir = f"{prev_year}-{curr_year}"
-        data_file = f"{***REMOVED***}/{year_dir}/rtt_{target}_clean.csv.gz"
+        data_file = f"{DATABRICKS_DATA_DIR}/{year_dir}/rtt_{target}_clean.csv.gz"
 
         buffer = io.BytesIO()
         df.write_csv(buffer, compression="gzip")
         buffer.seek(0)
-        w.workspace.mkdirs(f"{***REMOVED***}/{year_dir}")
+        w.workspace.mkdirs(f"{DATABRICKS_DATA_DIR}/{year_dir}")
         w.workspace.upload(
             path=data_file,
             content=buffer,
@@ -145,14 +145,14 @@ def load(df: pl.DataFrame, month: str, year: int):
         print(f"uploaded rtt_{target}_clean.csv.gz — {len(df)} rows")
 
         # update manifest.json with the new month if not already present
-        with w.workspace.download(f"{***REMOVED***}/manifest.json") as f:
+        with w.workspace.download(f"{DATABRICKS_DATA_DIR}/manifest.json") as f:
             manifest: dict[str, list[str]] = json.load(f)
 
         if target not in manifest["months"]:
             manifest["months"].append(target)
             manifest["months"] = sorted(manifest["months"], key=month_label_sorter)
             w.workspace.upload(
-                path=f"{***REMOVED***}/manifest.json",
+                path=f"{DATABRICKS_DATA_DIR}/manifest.json",
                 content=json.dumps(manifest, indent=2).encode(),
                 format=ImportFormat.RAW,
                 overwrite=True,
