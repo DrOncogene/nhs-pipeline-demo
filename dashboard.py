@@ -48,9 +48,9 @@ def _(mo):
     mo.md(rf"""
     # NHS Monthly Referral-To-Treatment (RTT) Data Exploration
 
-    This notebook uses the monthly RTT data available on the NHSE statistics website [here](https://www.england.nhs.uk/statistics/statistical-work-areas/rtt-waiting-times/rtt-data-2025-26/).
+    This notebook uses the monthly RTT data AVAILABLE on the NHSE statistics website [here](https://www.england.nhs.uk/statistics/statistical-work-areas/rtt-waiting-times/).
 
-    The full code, including the backend that runs on Github actions is available on Github. [![GitHub](https://img.shields.io/badge/github-repo-blue?logo=github)](https://github.com/DrOncogene/nhs-pipeline-demo)
+    The full code, including the backend that runs on Github actions is AVAILABLE on Github. [![GitHub](https://img.shields.io/badge/github-repo-blue?logo=github)](https://github.com/DrOncogene/nhs-pipeline-demo)
     """)
     return
 
@@ -65,10 +65,12 @@ def _(mo):
 
 
     show_env_btn = mo.ui.button(
-        label="Show Environment", on_click=toggle_env_display
+        label="Show Environment",
+        on_click=toggle_env_display,
     )
     hide_env_btn = mo.ui.button(
-        label="Hide Environment", on_click=toggle_env_display
+        label="Hide Environment",
+        on_click=toggle_env_display,
     )
     return get_show_env, hide_env_btn, show_env_btn
 
@@ -101,9 +103,14 @@ def _(EnvConfig, WorkspaceClient, mo, os):
 
 @app.cell
 def _(get_show_env, hide_env_btn, mo, show_env_btn, valid_env):
-    mo.md(
-        f"### Databricks Credentials (Note: Enter only if empty)<br><br>{valid_env}<br>{hide_env_btn}"
-    ) if get_show_env() else mo.md(f"{show_env_btn}")
+    mo.vstack(
+        [
+            mo.md(f"### Databricks Credentials (Note: Enter only if empty)"),
+            valid_env,
+            hide_env_btn,
+        ],
+        gap=2.0,
+    ) if get_show_env() else show_env_btn
     return
 
 
@@ -128,41 +135,73 @@ def _(Path, WorkspaceClient, json, valid_env):
 
 
 @app.cell
-def _(calendar, manifest: dict, mo):
-    months = ["All", *calendar.month_name[1:]]
-    available = manifest["months"]
-    get_start, set_start = mo.state(available[-12])
-    get_end, set_end = mo.state(available[-1])
-    return available, get_end, get_start, set_end, set_start
+def _(manifest: dict, mo, pl):
+    # states and constants
+
+    AVAILABLE: list[str] = manifest["months"]
+    N_AVAILABLE = len(AVAILABLE)
+
+    # keeps track of the selected data range below
+    get_start, set_start = mo.state(AVAILABLE[-12])
+    get_end, set_end = mo.state(AVAILABLE[-1])
+
+    # keeps track list of already download month
+    get_fetched, set_fetched = mo.state(set(AVAILABLE[-12:]))
+
+    # tracks/store the global downloaded data
+    get_store, set_store = mo.state(pl.DataFrame())
+    return (
+        AVAILABLE,
+        get_end,
+        get_fetched,
+        get_start,
+        get_store,
+        set_end,
+        set_fetched,
+        set_start,
+        set_store,
+    )
 
 
 @app.cell
-def _(available, get_end, get_start, mo, set_end, set_start):
+def _(AVAILABLE: list[str], get_end, get_start, mo, set_end, set_start):
+    def update_start(v: str):
+        if AVAILABLE.index(v) > AVAILABLE.index(get_end()):
+            return
+        set_start(v)
+
+
+    def update_end(v: str):
+        if AVAILABLE.index(v) < AVAILABLE.index(get_start()):
+            return
+        set_end(v)
+
+
     start_select = mo.ui.dropdown(
-        options=available,
+        options=AVAILABLE,
         label="**From**",
         value=get_start(),
         allow_select_none=False,
         searchable=True,
-        on_change=lambda v: set_start(v),
+        on_change=update_start,
     )
 
     end_select = mo.ui.dropdown(
-        options=available,
+        options=AVAILABLE,
         label="**To**",
         value=get_end(),
         allow_select_none=False,
         searchable=True,
-        on_change=lambda v: set_end(v),
+        on_change=update_end,
     )
     return end_select, start_select
 
 
 @app.cell
-def _(available, end_select, mo, set_end, set_start, start_select):
+def _(AVAILABLE: list[str], end_select, mo, set_end, set_start, start_select):
     def reset_range(value):
-        set_start(available[-12])
-        set_end(available[-1])
+        set_start(AVAILABLE[-12])
+        set_end(AVAILABLE[-1])
 
 
     refresh_btn = mo.ui.button(on_click=reset_range, label="Reset Data")
@@ -180,30 +219,63 @@ def _(available, end_select, mo, set_end, set_start, start_select):
 
 
 @app.cell
-def _(***REMOVED***, available, calendar, get_end, get_start, mo, pl, w):
+def _(
+    AVAILABLE: list[str],
+    ***REMOVED***,
+    calendar,
+    get_end,
+    get_fetched,
+    get_start,
+    get_store,
+    mo,
+    pl,
+    set_fetched,
+    set_store,
+    w,
+):
     @mo.cache
-    def load_data(start: str, end: str) -> pl.DataFrame:
+    def filter_data(months: list[str]) -> pl.DataFrame:
+        """filters already downloaded data"""
+
+        labels = []
+        for month in months:
+            abbr = month.strip()[0:3].title()
+            year = int(month.strip()[3:]) + 2000
+            labels.append(f"{abbr} {year}")
+
+        filtered = get_store().filter(pl.col("period_label").is_in(labels))
+        return filtered
+
+
+    @mo.cache
+    def load_data(start: int, end: int) -> pl.DataFrame:
         """loads data files from databricks workspace based on start and end month,
         concatenates them into a df and adds year, month_num and period_label columns
         for easier filtering and plotting downstream.
+        optimised to only download new data as needed.
         """
-        global available, w, ***REMOVED***
+        global w
 
         def sorter(path: str) -> int:
             name = path.split("/")[-1]
-            return available.index(name[4:9])
+            return AVAILABLE.index(name[4:9])
 
-        start_idx = available.index(start)
-        end_idx = available.index(end)
-        if start_idx > end_idx:
-            return df
-        months_in_range = available[start_idx : end_idx + 1]
+        selected_months = set(AVAILABLE[start : end + 1])
+        fetched = get_fetched()
+
+        if get_store().is_empty():
+            months_to_fetch = selected_months
+        elif selected_months.issubset(fetched):
+            return filter_data(selected_months)
+        else:
+            months_to_fetch = selected_months.difference(fetched)
+
+        set_fetched(months_to_fetch.union(get_fetched()))
         files_in_range = []
         for item in w.workspace.list(***REMOVED***, recursive=True):
             file_name = item.path.split("/")[-1]
-            if not file_name[4:9] in months_in_range:
-                continue
-            files_in_range.append(item.path)
+            if file_name[4:9] in months_to_fetch:
+                files_in_range.append(item.path)
 
         files_in_range.sort(key=sorter)
         data_in_range = []
@@ -211,7 +283,7 @@ def _(***REMOVED***, available, calendar, get_end, get_start, mo, pl, w):
             with w.workspace.download(path) as f:
                 data_in_range.append(pl.read_csv(f))
 
-        full_data = pl.concat(data_in_range).with_columns(
+        new_data = pl.concat(data_in_range).with_columns(
             [
                 pl.col("Period")
                 .str.strip_chars()
@@ -235,10 +307,22 @@ def _(***REMOVED***, available, calendar, get_end, get_start, mo, pl, w):
                 ).alias("period_label"),
             ]
         )
-        return full_data
+
+        if get_store().is_empty():
+            set_store(new_data)
+        else:
+            new_data = pl.concat([new_data, get_store()]).sort(
+                pl.col("period_label")
+            )
+            set_store(new_data)
+
+        return new_data
 
 
-    df = load_data(get_start(), get_end())
+    with mo.status.spinner(subtitle="Downloading data..."):
+        start, end = AVAILABLE.index(get_start()), AVAILABLE.index(get_end())
+        df = load_data(start, end)
+
     df
     return (df,)
 
