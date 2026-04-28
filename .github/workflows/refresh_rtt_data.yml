@@ -20,10 +20,10 @@ jobs:
     env:
       MONTH: ${{ github.event.inputs.month }}
       YEAR: ${{ github.event.inputs.year }}
-      ***REMOVED***: ${{ secrets.***REMOVED*** }}
-      ***REMOVED***: ${{ secrets.***REMOVED*** }}
-      ***REMOVED***: ${{ secrets.***REMOVED*** }}
-      ***REMOVED***: ${{ secrets.***REMOVED*** }}
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_API_KEY: ${{ secrets.DATABRICKS_API_KEY }}
+      DATABRICKS_DATA_DIR: ${{ secrets.DATABRICKS_DATA_DIR }}
 
     steps:
       - uses: actions/checkout@v4
