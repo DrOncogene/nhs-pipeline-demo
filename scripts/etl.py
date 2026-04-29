@@ -7,12 +7,16 @@ import json
 
 from databricks.sdk import WorkspaceClient
 import httpx
-import httpx
 import polars as pl
 from bs4 import BeautifulSoup
 
 from scripts import TEMP_DIR
-from scripts.utils import get_month_year_target, parse_month, parse_year, month_label_sorter
+from scripts.utils import (
+    get_month_year_target,
+    parse_month,
+    parse_year,
+    month_label_sorter,
+)
 
 DATABRICKS_HOST = os.getenv("DATABRICKS_HOST")
 DATABRICKS_CLIENT_ID = os.getenv("DATABRICKS_CLIENT_ID")
@@ -20,9 +24,18 @@ DATABRICKS_API_KEY = os.getenv("DATABRICKS_API_KEY")
 DATABRICKS_DATA_DIR = os.getenv("DATABRICKS_DATA_DIR")
 LOCAL_DATA_DIR = Path("data")
 
-if not all([DATABRICKS_HOST, DATABRICKS_CLIENT_ID, DATABRICKS_API_KEY, DATABRICKS_DATA_DIR]):
-    raise ValueError("Missing Databricks credentials. Please set DATABRICKS_HOST," \
-    "DATABRICKS_CLIENT_ID, and DATABRICKS_API_KEY environment variables.")
+if not all(
+    [
+        DATABRICKS_HOST,
+        DATABRICKS_CLIENT_ID,
+        DATABRICKS_API_KEY,
+        DATABRICKS_DATA_DIR,
+    ]
+):
+    raise ValueError(
+        "Missing Databricks credentials. Please set DATABRICKS_HOST,"
+        "DATABRICKS_CLIENT_ID, and DATABRICKS_API_KEY environment variables."
+    )
 
 BASE_URL = "https://www.england.nhs.uk/statistics/statistical-work-areas/rtt-waiting-times/rtt-data-20{}-{}/"
 
@@ -64,57 +77,86 @@ def transform(local_path: Path) -> pl.DataFrame:
     df = pl.read_csv(local_path, null_values=["", "*", "x", "X"])
     week_cols = [c for c in df.columns if c.startswith("Gt ") and "Weeks" in c]
     BUCKETS = [
-        ("0_to_4w",   [c for c in week_cols if int(c.split()[1]) < 4]),
-        ("4_to_8w",   [c for c in week_cols if 4 <= int(c.split()[1]) < 8]),
-        ("8_to_12w",  [c for c in week_cols if 8 <= int(c.split()[1]) < 12]),
+        ("0_to_4w", [c for c in week_cols if int(c.split()[1]) < 4]),
+        ("4_to_8w", [c for c in week_cols if 4 <= int(c.split()[1]) < 8]),
+        ("8_to_12w", [c for c in week_cols if 8 <= int(c.split()[1]) < 12]),
         ("12_to_18w", [c for c in week_cols if 12 <= int(c.split()[1]) < 18]),
         ("18_to_26w", [c for c in week_cols if 18 <= int(c.split()[1]) < 26]),
         ("26_to_52w", [c for c in week_cols if 26 <= int(c.split()[1]) < 52]),
-        ("gt_52w",    [c for c in week_cols if int(c.split()[1]) >= 52]),
+        ("gt_52w", [c for c in week_cols if int(c.split()[1]) >= 52]),
     ]
 
     df_clean = (
-        df
-        .filter(
-            (pl.col("Treatment Function Code") != "C_999") &
-            (pl.col("RTT Part Type") == "Part_2")  # incomplete pathways only
+        df.filter(
+            (pl.col("Treatment Function Code") != "C_999")
+            & (pl.col("RTT Part Type") == "Part_2")  # incomplete pathways only
         )
-        .with_columns([
-            pl.sum_horizontal(cols).alias(name)
-            for name, cols in BUCKETS
-        ])
-        .with_columns([pl.col("Period").str.replace("RTT-", "").str.replace("-", " ").alias("Period")])
-        .with_columns([
-            (pl.col("0_to_4w") + pl.col("4_to_8w") + 
-            pl.col("8_to_12w") + pl.col("12_to_18w"))
-            .alias("count_within_18w"),
-            (pl.col("18_to_26w") + pl.col("26_to_52w") + pl.col("gt_52w"))
-            .alias("count_beyond_18w"),
-            pl.col("gt_52w").alias("count_beyond_52w"),
-        ])
-        .with_columns([
-            (pl.col("count_within_18w") / pl.col("Total All") * 100).round(2)
-            .alias("pct_within_18w"),
-            (pl.col("count_beyond_18w") / pl.col("Total All") * 100).round(2)
-            .alias("pct_beyond_18w"),
-            (pl.col("count_beyond_52w") / pl.col("Total All") * 100).round(2)
-            .alias("pct_beyond_52w"),
-        ])
-        .select([
-            "Period",
-            "Provider Org Code", "Provider Org Name",
-            "Provider Parent Name",
-            "Commissioner Org Code", "Commissioner Org Name",
-            "Commissioner Parent Name",
-            "Treatment Function Code", "Treatment Function Name",
-            "RTT Part Type", "RTT Part Description",
-            "Total All",
-            "count_within_18w", "count_beyond_18w", "count_beyond_52w",
-            "pct_within_18w", "pct_beyond_18w", "pct_beyond_52w",
-            # the 7 bucket columns
-            "0_to_4w", "4_to_8w", "8_to_12w", "12_to_18w",
-            "18_to_26w", "26_to_52w", "gt_52w",
-        ])
+        .with_columns([pl.sum_horizontal(cols).alias(name) for name, cols in BUCKETS])
+        .with_columns(
+            [
+                pl.col("Period")
+                .str.replace("RTT-", "")
+                .str.replace("-", " ")
+                .alias("Period")
+            ]
+        )
+        .with_columns(
+            [
+                (
+                    pl.col("0_to_4w")
+                    + pl.col("4_to_8w")
+                    + pl.col("8_to_12w")
+                    + pl.col("12_to_18w")
+                ).alias("count_within_18w"),
+                (pl.col("18_to_26w") + pl.col("26_to_52w") + pl.col("gt_52w")).alias(
+                    "count_beyond_18w"
+                ),
+                pl.col("gt_52w").alias("count_beyond_52w"),
+            ]
+        )
+        .with_columns(
+            [
+                (pl.col("count_within_18w") / pl.col("Total All") * 100)
+                .round(2)
+                .alias("pct_within_18w"),
+                (pl.col("count_beyond_18w") / pl.col("Total All") * 100)
+                .round(2)
+                .alias("pct_beyond_18w"),
+                (pl.col("count_beyond_52w") / pl.col("Total All") * 100)
+                .round(2)
+                .alias("pct_beyond_52w"),
+            ]
+        )
+        .select(
+            [
+                "Period",
+                "Provider Org Code",
+                "Provider Org Name",
+                "Provider Parent Name",
+                "Commissioner Org Code",
+                "Commissioner Org Name",
+                "Commissioner Parent Name",
+                "Treatment Function Code",
+                "Treatment Function Name",
+                "RTT Part Type",
+                "RTT Part Description",
+                "Total All",
+                "count_within_18w",
+                "count_beyond_18w",
+                "count_beyond_52w",
+                "pct_within_18w",
+                "pct_beyond_18w",
+                "pct_beyond_52w",
+                # the 7 bucket columns
+                "0_to_4w",
+                "4_to_8w",
+                "8_to_12w",
+                "12_to_18w",
+                "18_to_26w",
+                "26_to_52w",
+                "gt_52w",
+            ]
+        )
     )
     return df_clean
 
@@ -126,7 +168,11 @@ def load(df: pl.DataFrame, month: str, year: int):
     target = get_month_year_target(month, year)
 
     try:
-        w = WorkspaceClient(host=DATABRICKS_HOST, client_id=DATABRICKS_CLIENT_ID, client_secret=DATABRICKS_API_KEY)
+        w = WorkspaceClient(
+            host=DATABRICKS_HOST,
+            client_id=DATABRICKS_CLIENT_ID,
+            client_secret=DATABRICKS_API_KEY,
+        )
 
         prev_year, curr_year = (year - 1) + 2000, year
         year_dir = f"{prev_year}-{curr_year}"
@@ -184,7 +230,7 @@ def main():
             print(f"Fetching data for {target}...")
             extract(m, year)
         except Exception as e:
-            print(f"Data for {target} not yet available: {e}")
+            print(f"Data for {target} not found: {e}")
             continue
 
         df_clean = transform(TEMP_DIR / f"rtt_{target}.csv")

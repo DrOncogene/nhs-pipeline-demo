@@ -41,7 +41,7 @@ def get_month_year_target(month: str, year: int) -> str:
         return f"{month}{year}"
     else:
         raise ValueError(f"Invalid month: {month}")
-    
+
 
 def month_label_sorter(label: str) -> tuple[int, int]:
     """Return (year, month) for labels like Jan26, Feb22. Used with sorted()"""
