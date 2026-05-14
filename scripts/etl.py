@@ -212,13 +212,13 @@ def load(df: pl.DataFrame, month: str, year: int):
 
 def main():
     month = os.getenv("MONTH", None)
-    year = os.getenv("YEAR", "2026")[-2:]  # e.g. "26"
+    year = os.getenv("YEAR", None)  # e.g. "26"
     month, year = parse_month(month), parse_year(year)
 
     assert year is not None, "Invalid year format. Use e.g. '2026' or '26'."
 
     if month is None:
-        print("No month specified, defaulting to all months in the year.")
+        print(f"No month specified, defaulting to all months in the year: {year}.")
         months = calendar.month_abbr[1:]
     else:
         months = [month]

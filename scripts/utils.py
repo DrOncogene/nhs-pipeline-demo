@@ -18,8 +18,11 @@ def parse_month(value: str | None) -> str | None:
     return None
 
 
-def parse_year(value: str) -> int | None:
+def parse_year(value: str | None) -> int | None:
     """Parse year from various formats. Returns 2-digit year."""
+    if value is None:
+        return None
+
     for fmt in ("%Y", "%y"):
         try:
             return datetime.strptime(value.strip(), fmt).year - 2000
