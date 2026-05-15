@@ -97,6 +97,7 @@ def transform(local_path: Path) -> pl.DataFrame:
                 pl.col("Period")
                 .str.replace("RTT-", "")
                 .str.replace("-", " ")
+                .str.to_titlecase()
                 .alias("Period")
             ]
         )
